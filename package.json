@@ -1,0 +1,11 @@
+{
+  "name": "restaurant-management-system",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present"
+  }
+}
