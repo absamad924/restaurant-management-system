@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- ENUMS ---
+enum Role {
+  MANAGER
+  CASHIER
+  CUSTOMER
+}
+
+enum OrderFlow {
+  KITCHEN_ORDER
+  DIRECT_SALE
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+}
+
+enum OrderStatus {
+  PENDING_KITCHEN
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+}
+
+// --- MODELS ---
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(CUSTOMER)
+  createdAt    DateTime @default(now())
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String
+  description String?
+  menuItems   MenuItem[]
+}
+
+model MenuItem {
+  id          String      @id @default(uuid())
+  categoryId  String
+  name        String
+  description String?
+  price       Float
+  isAvailable Boolean     @default(true)
+  stockCount  Int         @default(0)
+  
+  category    Category    @relation(fields: [categoryId], references: [id])
+  orderItems  OrderItem[]
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  orderNumber   String        @unique
+  tableNumber   String?
+  flow          OrderFlow
+  type          OrderType
+  status        OrderStatus   @default(PENDING_KITCHEN)
+  paymentStatus PaymentStatus @default(UNPAID)
+  paymentMethod PaymentMethod?
+  totalAmount   Float
+  createdAt     DateTime      @default(now())
+  
+  items         OrderItem[]
+}
+
+model OrderItem {
+  id         String   @id @default(uuid())
+  orderId    String
+  menuItemId String
+  quantity   Int
+  unitPrice  Float
+  notes      String?
+  addedAt    DateTime @default(now())
+  
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+}

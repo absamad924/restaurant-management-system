@@ -3,3 +3,4 @@ echo .env >> .gitignore
 echo dist/ >> .gitignore
 echo .expo/ >> .gitignore
 echo .DS_Store >> .gitignore
+node_modules
