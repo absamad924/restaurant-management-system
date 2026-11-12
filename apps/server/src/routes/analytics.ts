@@ -8,7 +8,13 @@ router.get('/', async (req, res) => {
     // Note: Assuming your order model is named 'Order' and has a 'total' and 'createdAt' field.
     const allOrders = await prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
-      // include: { items: true } // Uncomment if you want to include item details
+      include: {
+        items: {
+          include: {
+            menuItem: true // Pulls in the actual name and details of the item
+          }
+        }
+      }
     });
 
     const totalOrders = allOrders.length;

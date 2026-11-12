@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
+import toast from 'react-hot-toast';
 
 interface MenuItem {
   id: string;
@@ -18,6 +19,12 @@ export default function POSDashboard() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [flow, setFlow] = useState<'KITCHEN_ORDER' | 'DIRECT_SALE'>('KITCHEN_ORDER');
+
+  // Payment Settlement Modal State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
+  const [amountTendered, setAmountTendered] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchMenu = () => {
     fetch('http://localhost:5000/api/menu/items')
@@ -70,9 +77,45 @@ export default function POSDashboard() {
     });
   };
 
+  const updateQuantity = (id: string, delta: number) => {
+    setCart(prev =>
+      prev
+        .map(item =>
+          item.id === id ? { ...item, quantity: item.quantity + delta } : item
+        )
+        .filter(item => item.quantity > 0)
+    );
+  };
+
+  const removeFromCart = (id: string) => {
+    setCart(prev => prev.filter(item => item.id !== id));
+  };
+
+  const clearCart = () => {
+    setCart([]);
+  };
+
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-  const handleSubmitOrder = async () => {
+ const handleCheckoutClick = () => {
+    if (cart.length === 0) return;
+
+    if (flow === 'DIRECT_SALE') {
+      // Pre-fill exact amount tendered and open settlement modal
+      setAmountTendered(cartTotal.toString());
+      setPaymentMethod('CASH');
+      setIsPaymentModalOpen(true);
+    } else {
+      // Kitchen orders go straight to the KDS as unpaid/open tabs
+      submitOrderToBackend();
+    }
+  };
+
+  const submitOrderToBackend = async (settlementDetails?: {
+    paymentMethod: 'CASH' | 'POS_CARD' | 'TRANSFER';
+    paymentStatus: 'PAID';
+  }) => {
+    setIsSubmitting(true);
     try {
       const response = await fetch('http://localhost:5000/api/orders', {
         method: 'POST',
@@ -83,6 +126,10 @@ export default function POSDashboard() {
         body: JSON.stringify({
           orderType: flow,
           totalAmount: cartTotal,
+          ...(settlementDetails && {
+            paymentMethod: settlementDetails.paymentMethod,
+            paymentStatus: settlementDetails.paymentStatus
+          }),
           items: cart.map(item => ({
             menuItemId: item.id,
             quantity: item.quantity,
@@ -97,11 +144,17 @@ export default function POSDashboard() {
       }
 
       setCart([]);
-      alert(`Successfully submitted ${flow.replace('_', ' ')}!`);
-      
+      setIsPaymentModalOpen(false);
+      toast.success(
+        flow === 'DIRECT_SALE'
+          ? 'Payment settled & order completed!'
+          : 'Order sent to Kitchen Display!'
+      );
     } catch (error: any) {
       console.error('Checkout error:', error);
-      alert(error.message);
+      toast.error(error.message || 'Failed to process order');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -145,17 +198,28 @@ export default function POSDashboard() {
 
       {/* Right Sidebar - Active Cart & Checkout */}
       <aside className="w-96 bg-white shadow-xl border-l border-gray-200 flex flex-col h-screen z-10">
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
-          <h2 className="text-xl font-bold text-gray-800">Current Order</h2>
-          <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded">Draft</span>
+       <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-800">Current Order</h2>
+            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded">
+              Draft
+            </span>
+          </div>
+          {cart.length > 0 && (
+            <button
+              onClick={clearCart}
+              className="text-xs font-semibold text-red-600 hover:text-red-700 hover:underline transition-colors"
+            >
+              Clear All
+            </button>
+          )}
         </div>
-        
         {/* Dual-Flow Toggle */}
         <div className="p-4 border-b border-gray-100 flex gap-2 bg-white">
           <button 
             onClick={() => setFlow('KITCHEN_ORDER')}
             className={`flex-1 py-2 text-sm font-medium rounded-md shadow-sm transition-colors ${
-              flow === 'KITCHEN_ORDER' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              flow === 'KITCHEN_ORDER' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             Kitchen Order
@@ -163,14 +227,14 @@ export default function POSDashboard() {
           <button 
             onClick={() => setFlow('DIRECT_SALE')}
             className={`flex-1 py-2 text-sm font-medium rounded-md shadow-sm transition-colors ${
-              flow === 'DIRECT_SALE' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              flow === 'DIRECT_SALE' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             Direct Sale
           </button>
         </div>
 
-        {/* Cart Items Area */}
+       {/* Cart Items Area */}
         <div className="flex-1 overflow-auto p-6 bg-gray-50/50">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
@@ -180,15 +244,65 @@ export default function POSDashboard() {
               <p className="text-sm font-medium">Cart is empty</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {cart.map(item => (
-                <div key={item.id} className="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                  <div>
-                    <h4 className="font-semibold text-gray-800 text-sm">{item.name}</h4>
-                    <p className="text-gray-500 text-xs">₦ {item.price.toLocaleString()} x {item.quantity}</p>
+                <div
+                  key={item.id}
+                  className="bg-white p-3.5 rounded-lg shadow-sm border border-gray-100 space-y-3"
+                >
+                  {/* Top Row: Name & Line Subtotal */}
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <h4 className="font-semibold text-gray-800 text-sm leading-tight">
+                        {item.name}
+                      </h4>
+                      <p className="text-gray-500 text-xs mt-0.5">
+                        ₦ {item.price.toLocaleString()} each
+                      </p>
+                    </div>
+                    <div className="font-bold text-gray-900 text-sm whitespace-nowrap">
+                      ₦ {(item.price * item.quantity).toLocaleString()}
+                    </div>
                   </div>
-                  <div className="font-bold text-gray-800">
-                    ₦ {(item.price * item.quantity).toLocaleString()}
+
+                  {/* Bottom Row: Quantity Stepper & Remove Button */}
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => updateQuantity(item.id, -1)}
+                        aria-label="Decrease quantity"
+                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4" />
+                        </svg>
+                      </button>
+
+                      <span className="w-7 text-center text-sm font-bold text-gray-800">
+                        {item.quantity}
+                      </span>
+
+                      <button
+                        onClick={() => updateQuantity(item.id, 1)}
+                        aria-label="Increase quantity"
+                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => removeFromCart(item.id)}
+                      aria-label="Remove item"
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                      title="Remove item"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -202,15 +316,148 @@ export default function POSDashboard() {
             <span>Total</span>
             <span>₦ {cartTotal.toLocaleString()}</span>
           </div>
-          <button 
-            disabled={cart.length === 0}
-            onClick={handleSubmitOrder}
+         <button
+            disabled={cart.length === 0 || isSubmitting}
+            onClick={handleCheckoutClick}
             className="w-full py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-lg shadow-sm transition-colors text-lg"
           >
-            Submit Order
+            {flow === 'DIRECT_SALE' ? 'Proceed to Payment' : 'Send to Kitchen'}
           </button>
         </div>
       </aside>
+      {/* Direct Sale Payment Settlement Modal */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex justify-between items-center">
+              <h3 className="text-lg font-bold">Settle Direct Sale</h3>
+              <button
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Total Due Banner */}
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
+                <p className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-1">
+                  Total Amount Due
+                </p>
+                <p className="text-3xl font-black text-gray-900">
+                  ₦ {cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              {/* Payment Method Selector */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Payment Method
+                </label>
+                <div className="grid grid-cols-3 gap-2.5">
+                  {(['CASH', 'CARD', 'TRANSFER'] as const).map(method => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => {
+                        setPaymentMethod(method);
+                        if (method !== 'CASH') {
+                          setAmountTendered(cartTotal.toString());
+                        }
+                      }}
+                      className={`py-2.5 px-3 rounded-lg text-xs font-bold border transition-all ${
+                        paymentMethod === method
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {method === 'CARD' ? 'POS / CARD' : method}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Cash Tendered & Change Calculator */}
+              {paymentMethod === 'CASH' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                      Cash Received (₦)
+                    </label>
+                    <input
+                      type="number"
+                      min={cartTotal}
+                      value={amountTendered}
+                      onChange={e => setAmountTendered(e.target.value)}
+                      className="w-full px-4 py-3 text-lg font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      placeholder="Enter amount received"
+                    />
+                  </div>
+
+                  {/* Quick Cash Denominations */}
+                  <div className="flex flex-wrap gap-2">
+                    {[cartTotal, 1000, 2000, 5000, 10000].map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setAmountTendered(preset.toString())}
+                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-md transition-colors"
+                      >
+                        {idx === 0 ? 'Exact' : `₦${preset.toLocaleString()}`}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Change Due Display */}
+                  <div className="flex justify-between items-center p-3.5 bg-gray-50 rounded-lg border border-gray-200">
+                    <span className="text-sm font-semibold text-gray-600">Change Due:</span>
+                    <span
+                      className={`text-lg font-bold ${
+                        Number(amountTendered) >= cartTotal ? 'text-green-600' : 'text-red-500'
+                      }`}
+                    >
+                      ₦{' '}
+                      {Math.max(0, Number(amountTendered || 0) - cartTotal).toLocaleString(
+                        undefined,
+                        { minimumFractionDigits: 2 }
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    isSubmitting ||
+                    (paymentMethod === 'CASH' && Number(amountTendered || 0) < cartTotal)
+                  }
+                  onClick={() =>
+                    submitOrderToBackend({
+                      paymentMethod,
+                      paymentStatus: 'PAID'
+                    })
+                  }
+                  className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-lg shadow-sm transition-colors"
+                >
+                  {isSubmitting ? 'Processing...' : 'Confirm Payment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

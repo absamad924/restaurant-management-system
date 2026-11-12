@@ -92,10 +92,7 @@ if (io) {
 
 // Update menu item price/availability (MANAGER only)
 router.patch('/items/:id', authenticateToken, requireRole([Role.MANAGER]), async (req, res) => {
-  const io = (req as any).io;
-if (io) {
-  io.emit('menu_updated');
-}
+
   const id = req.params.id as string;
   const { price, stockCount, isAvailable } = req.body;
 
@@ -108,6 +105,11 @@ if (io) {
         ...(isAvailable !== undefined && { isAvailable: Boolean(isAvailable) }),
       },
     });
+
+      const io = (req as any).io;
+if (io) {
+  io.emit('menu_updated');
+}
 
     res.status(200).json({ status: 'success', item: updatedItem });
   } catch (error) {

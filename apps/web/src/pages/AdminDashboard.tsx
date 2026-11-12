@@ -25,10 +25,6 @@ export default function AdminDashboard() {
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
-  // Transaction History State
-  const [transactionSearch, setTransactionSearch] = useState("");
-  const [selectedOrderDetails, setSelectedOrderDetails] = useState<any | null>(null);
-
   // Settings State
   const [targetUsername, setTargetUsername] = useState("cashier");
   const [newPassword, setNewPassword] = useState("");
@@ -52,7 +48,7 @@ export default function AdminDashboard() {
     name: string;
   } | null>(null);
 
-useEffect(() => {
+  useEffect(() => {
     if (activeTab === "menu") {
       fetchMenuData();
     } else if (activeTab === "analytics" || activeTab === "history") {
@@ -70,7 +66,6 @@ useEffect(() => {
           setSelectedCategoryId(catData.categories[0].id);
         }
       }
-      
 
       const itemRes = await fetch("http://localhost:5000/api/menu/items");
       const itemData = await itemRes.json();
@@ -176,7 +171,7 @@ useEffect(() => {
     }
   };
 
-  const handleToggleAvailability = async (
+const handleToggleAvailability = async (
     id: string,
     currentStatus: boolean,
   ) => {
@@ -185,7 +180,7 @@ useEffect(() => {
       const response = await fetch(
         `http://localhost:5000/api/menu/items/${id}`,
         {
-          method: "PATCH",
+          method: "PATCH", // <-- Change this back to PATCH!
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -194,16 +189,19 @@ useEffect(() => {
         },
       );
 
-      if (response.ok) {
-        setMenuItems((prev) =>
-          prev.map((item) =>
-            item.id === id ? { ...item, isAvailable: !currentStatus } : item,
-          ),
-        );
-        toast.success(currentStatus ? "Marked out of stock" : "Marked in stock");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Server error: ${response.status}`);
       }
-    } catch (error) {
-      toast.error("Failed to update status");
+
+      setMenuItems((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, isAvailable: !currentStatus } : item,
+        ),
+      );
+      toast.success(currentStatus ? "Marked out of stock" : "Marked in stock");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update status");
       console.error("Failed to toggle availability:", error);
     }
   };
@@ -676,7 +674,7 @@ useEffect(() => {
             </div>
           )}
 
-         {activeTab === "analytics" && (
+          {activeTab === "analytics" && (
             <div className="max-w-6xl space-y-8">
               <div className="flex justify-between items-center">
                 <h2 className="text-3xl font-bold text-gray-900">
@@ -704,7 +702,7 @@ useEffect(() => {
                     
                     {/* Total Revenue */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-5">
-                    <div className="bg-green-50 rounded-xl text-green-600 flex items-center justify-center font-black text-2xl w-14 h-14 shrink-0">
+                      <div className="bg-green-50 rounded-xl text-green-600 flex items-center justify-center font-black text-2xl w-14 h-14 shrink-0">
                         ₦
                       </div>
                       <div>
@@ -758,6 +756,7 @@ useEffect(() => {
                         <thead>
                           <tr className="bg-slate-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider">
                             <th className="p-4">Order ID</th>
+                            <th className="p-4">Items</th>
                             <th className="p-4">Date & Time</th>
                             <th className="p-4">Amount</th>
                             <th className="p-4">Status</th>
@@ -766,7 +765,7 @@ useEffect(() => {
                         <tbody className="divide-y divide-gray-100 text-sm">
                           {analyticsData.recentOrders.length === 0 ? (
                             <tr>
-                              <td colSpan={4} className="p-8 text-center text-gray-500">
+                              <td colSpan={5} className="p-8 text-center text-gray-500">
                                 No recent orders found.
                               </td>
                             </tr>
@@ -775,6 +774,14 @@ useEffect(() => {
                               <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="p-4 font-mono text-gray-600">
                                   #{order.id.slice(-6).toUpperCase()}
+                                </td>
+                                <td
+                                  className="p-4 text-gray-600 text-xs max-w-[200px] truncate"
+                                  title={order.items?.map((i: any) => `${i.quantity}x ${i.menuItem?.name}`).join(", ")}
+                                >
+                                  {order.items?.length > 0
+                                    ? order.items.map((i: any) => `${i.quantity}x ${i.menuItem?.name}`).join(", ")
+                                    : "No items"}
                                 </td>
                                 <td className="p-4 text-gray-800">
                                   {new Date(order.createdAt).toLocaleString()}
@@ -802,6 +809,7 @@ useEffect(() => {
               )}
             </div>
           )}
+
           {activeTab === "history" && (
             <div className="max-w-5xl space-y-8">
               <h2 className="text-3xl font-bold text-gray-900 mb-8">
@@ -818,7 +826,7 @@ useEffect(() => {
                     analyticsData.history.reduce((acc: any, order: any) => {
                       // Format date to "Month Year" (e.g. "November 2026")
                       const date = new Date(order.createdAt);
-                      const monthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                      const monthYear = date.toLocaleString("default", { month: "long", year: "numeric" });
                       
                       if (!acc[monthYear]) acc[monthYear] = [];
                       acc[monthYear].push(order);
@@ -830,7 +838,7 @@ useEffect(() => {
                       <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                         <h3 className="text-lg font-bold text-gray-800">{monthYear}</h3>
                         <span className="text-sm font-medium text-gray-500 bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">
-                          {orders.length} order{orders.length !== 1 ? 's' : ''}
+                          {orders.length} order{orders.length !== 1 ? "s" : ""}
                         </span>
                       </div>
                       
@@ -841,6 +849,7 @@ useEffect(() => {
                             <tr className="bg-white border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
                               <th className="p-4">Order ID</th>
                               <th className="p-4">Date & Time</th>
+                              <th className="p-4">Items</th>
                               <th className="p-4">Amount</th>
                               <th className="p-4">Status</th>
                             </tr>
@@ -853,6 +862,14 @@ useEffect(() => {
                                 </td>
                                 <td className="p-4 text-gray-800">
                                   {new Date(order.createdAt).toLocaleString()}
+                                </td>
+                                <td
+                                  className="p-4 text-gray-600 text-xs max-w-[200px] truncate"
+                                  title={order.items?.map((i: any) => `${i.quantity}x ${i.menuItem?.name}`).join(", ")}
+                                >
+                                  {order.items?.length > 0
+                                    ? order.items.map((i: any) => `${i.quantity}x ${i.menuItem?.name}`).join(", ")
+                                    : "No items"}
                                 </td>
                                 <td className="p-4 font-bold text-gray-900">
                                   ₦ {Number(order.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}

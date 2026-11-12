@@ -6,9 +6,10 @@ import { OrderStatus, OrderFlow, OrderType } from '@prisma/client';
 const router = Router();
 
 // Create a new order (Cashier / POS or Customer App)
+// Create a new order (Cashier / POS or Customer App)
 router.post('/', authenticateToken, async (req: AuthRequest, res) => {
-  const { items, flow, type } = req.body; 
-  // items expected format: [{ menuItemId: "id", quantity: 2, notes: "No onions" }]
+  // Frontend sends `orderType` for the flow, plus optional payment settlement fields
+  const { items, orderType, type, paymentMethod, paymentStatus } = req.body; 
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ status: 'error', message: 'Order items are required' });
@@ -38,17 +39,23 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    // Generate a random 6-digit order number (e.g., ORD-739104)
     const orderNumber = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    // Direct Sales are instantly fulfilled; Kitchen Orders go to the KDS queue
+    const initialStatus = orderType === 'DIRECT_SALE' 
+      ? OrderStatus.COMPLETED 
+      : OrderStatus.PENDING_KITCHEN;
 
     // Save Order to Database
     const newOrder = await prisma.order.create({
       data: {
         orderNumber,
-        flow: flow || OrderFlow.KITCHEN_ORDER,
+        flow: orderType || OrderFlow.KITCHEN_ORDER,
         type: type || OrderType.DINE_IN,
         totalAmount,
-        status: OrderStatus.PENDING_KITCHEN,
+        status: initialStatus,
+        paymentMethod: paymentMethod || null,
+        paymentStatus: paymentStatus || 'UNPAID',
         items: {
           create: orderItemsData,
         },
