@@ -28,7 +28,8 @@ router.get('/', async (req, res) => {
         totalOrders,
         averageOrderValue
       },
-      recentOrders: allOrders.slice(0, 10) // Send only the 10 most recent for the table
+      recentOrders: allOrders.slice(0, 3), // Send only the 3 most recent for the table
+      history: allOrders
     });
   } catch (error) {
     console.error('Analytics Error:', error);
