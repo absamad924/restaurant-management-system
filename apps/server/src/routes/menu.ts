@@ -4,6 +4,26 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { Role } from '@prisma/client';
 
 const router = Router();
+// Delete a menu item (MANAGER only)
+router.delete('/items/:id', authenticateToken, requireRole([Role.MANAGER]), async (req, res) => {
+  const id = req.params.id as string;
+
+  try {
+    await prisma.menuItem.delete({
+      where: { id },
+    });
+
+    // Broadcast to all connected clients that the menu changed
+    const io = (req as any).io;
+    if (io) {
+      io.emit('menu_updated');
+    }
+
+    res.status(200).json({ status: 'success', message: 'Item deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: (error as Error).message });
+  }
+});
 
 // Get all categories with active menu items (Public / POS access)
 router.get('/categories', async (req, res) => {
@@ -27,8 +47,7 @@ router.get('/categories', async (req, res) => {
 router.get('/items', async (req, res) => {
   try {
     const items = await prisma.menuItem.findMany({
-      where: { isAvailable: true },
-      include: {
+         include: {
         category: {
           select: { name: true },
         },
@@ -44,6 +63,10 @@ router.get('/items', async (req, res) => {
 
 // Create a new menu item (MANAGER only)
 router.post('/items', authenticateToken, requireRole([Role.MANAGER]), async (req, res) => {
+ const io = (req as any).io;
+if (io) {
+  io.emit('menu_updated');
+}
   const { name, description, price, categoryId, stockCount } = req.body;
 
   if (!name || !price || !categoryId) {
@@ -67,8 +90,12 @@ router.post('/items', authenticateToken, requireRole([Role.MANAGER]), async (req
   }
 });
 
-// Update menu item price/stock/availability (MANAGER only)
+// Update menu item price/availability (MANAGER only)
 router.patch('/items/:id', authenticateToken, requireRole([Role.MANAGER]), async (req, res) => {
+  const io = (req as any).io;
+if (io) {
+  io.emit('menu_updated');
+}
   const id = req.params.id as string;
   const { price, stockCount, isAvailable } = req.body;
 

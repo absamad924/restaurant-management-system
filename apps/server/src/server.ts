@@ -7,6 +7,8 @@ import { prisma } from './lib/prisma';
 import authRoutes from './routes/auth';
 import menuRoutes from './routes/menu';
 import orderRoutes from './routes/orders';
+import userRoutes from './routes/users';
+import analyticsRoutes from './routes/analytics';
 
 dotenv.config();
 
@@ -32,6 +34,8 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // System Health Endpoint
 app.get('/api/health', async (req, res) => {

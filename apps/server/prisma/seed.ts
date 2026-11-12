@@ -4,74 +4,72 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Starting database seeding...');
+  console.log('🌱 Seeding database...');
 
-  // Clean existing records
-  await prisma.orderItem.deleteMany();
-  await prisma.order.deleteMany();
-  await prisma.menuItem.deleteMany();
-  await prisma.category.deleteMany();
-  await prisma.user.deleteMany();
+  // 1. Hash separate passwords for manager and cashier
+  const managerPassword = await bcrypt.hash('managerSecure123', 10);
+  const cashierPassword = await bcrypt.hash('cashierSecure123', 10);
 
-  // Create Default Users
-  const hashedPassword = await bcrypt.hash('password123', 10);
-
-  const manager = await prisma.user.create({
-    data: {
-      name: 'System Manager',
-      email: 'manager@rms.com',
-      passwordHash: hashedPassword,
+  // 2. Seed Manager Account
+  const manager = await prisma.user.upsert({
+    where: { username: 'manager' },
+    update: {},
+    create: {
+      username: 'manager',
+      password: managerPassword,
       role: Role.MANAGER,
     },
   });
+  console.log(`✅ Created manager (${manager.username})`);
 
-  const cashier = await prisma.user.create({
-    data: {
-      name: 'Primary Cashier',
-      email: 'cashier@rms.com',
-      passwordHash: hashedPassword,
+  // 3. Seed Cashier Account
+  const cashier = await prisma.user.upsert({
+    where: { username: 'cashier' },
+    update: {},
+    create: {
+      username: 'cashier',
+      password: cashierPassword,
       role: Role.CASHIER,
     },
   });
+  console.log(`✅ Created cashier (${cashier.username})`);
 
-  console.log(`Created Users: ${manager.email} (MANAGER), ${cashier.email} (CASHIER)`);
+  // 4. Seed Categories safely using findFirst/create
+  let drinksCat = await prisma.category.findFirst({ where: { name: 'Drinks' } });
+  if (!drinksCat) {
+    drinksCat = await prisma.category.create({ data: { name: 'Drinks' } });
+  }
 
-  // Create Categories & Menu Items
-  const mains = await prisma.category.create({
-    data: {
-      name: 'Main Dishes',
-      description: 'Hearty cooked meals and rice dishes',
-      menuItems: {
-        create: [
-          { name: 'Special Jollof Rice & Chicken', price: 3500, stockCount: 50 },
-          { name: 'Fried Rice & Grilled Fish', price: 4000, stockCount: 40 },
-          { name: 'Pounded Yam & Egusi Soup', price: 3000, stockCount: 30 },
-        ],
-      },
-    },
-  });
+  let mealsCat = await prisma.category.findFirst({ where: { name: 'Meals' } });
+  if (!mealsCat) {
+    mealsCat = await prisma.category.create({ data: { name: 'Meals' } });
+  }
 
-  const drinks = await prisma.category.create({
-    data: {
-      name: 'Beverages',
-      description: 'Chilled soft drinks and juices',
-      menuItems: {
-        create: [
-          { name: 'Cold Soft Drink 50cl', price: 500, stockCount: 100 },
-          { name: 'Fresh Orange Juice', price: 1200, stockCount: 60 },
-          { name: 'Bottled Water 75cl', price: 300, stockCount: 150 },
-        ],
-      },
-    },
-  });
+  console.log('✅ Categories ready');
 
-  console.log(`Created Categories: ${mains.name}, ${drinks.name}`);
-  console.log('Database seeding complete.');
+  // 5. Seed Menu Items
+  const itemsToSeed = [
+    { name: 'Bottled Water 75cl', price: 300, isAvailable: true, categoryId: drinksCat.id },
+    { name: 'Cold Soft Drink 50cl', price: 500, isAvailable: true, categoryId: drinksCat.id },
+    { name: 'Fresh Orange Juice', price: 1200, isAvailable: true, categoryId: drinksCat.id },
+    { name: 'Fried Rice & Grilled Fish', price: 4000, isAvailable: true, categoryId: mealsCat.id },
+    { name: 'Special Jollof Rice & Chicken', price: 3500, isAvailable: true, categoryId: mealsCat.id },
+  ];
+
+  for (const item of itemsToSeed) {
+    const existing = await prisma.menuItem.findFirst({ where: { name: item.name } });
+    if (!existing) {
+      await prisma.menuItem.create({ data: item });
+    }
+  }
+
+  console.log('✅ Created default menu catalog items');
+  console.log('🌱 Seeding complete!');
 }
 
 main()
   .catch((e) => {
-    console.error('Seeding failed:', e);
+    console.error('❌ Seeding failed:', e);
     process.exit(1);
   })
   .finally(async () => {
