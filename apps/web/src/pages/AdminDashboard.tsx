@@ -171,7 +171,7 @@ export default function AdminDashboard() {
     }
   };
 
-const handleToggleAvailability = async (
+  const handleToggleAvailability = async (
     id: string,
     currentStatus: boolean,
   ) => {
@@ -180,7 +180,7 @@ const handleToggleAvailability = async (
       const response = await fetch(
         `http://localhost:5000/api/menu/items/${id}`,
         {
-          method: "PATCH", // <-- Change this back to PATCH!
+          method: "PATCH",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -242,6 +242,34 @@ const handleToggleAvailability = async (
       setDeleteModalOpen(false);
       setItemToDelete(null);
     }
+  };
+
+  const renderPaymentBadge = (method?: string | null) => {
+    if (!method) {
+      return <span className="text-xs text-gray-400 italic">Unpaid / N/A</span>;
+    }
+
+    const styles: Record<string, string> = {
+      CASH: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      CARD: "bg-blue-50 text-blue-700 border-blue-200",
+      TRANSFER: "bg-purple-50 text-purple-700 border-purple-200",
+    };
+
+    const labels: Record<string, string> = {
+      CASH: "Cash",
+      CARD: "POS / Card",
+      TRANSFER: "Transfer",
+    };
+
+    return (
+      <span
+        className={`px-2.5 py-1 rounded-md text-xs font-bold border whitespace-nowrap ${
+          styles[method] || "bg-gray-100 text-gray-700 border-gray-200"
+        }`}
+      >
+        {labels[method] || method}
+      </span>
+    );
   };
 
   const filteredMenuItems = menuItems
@@ -758,6 +786,7 @@ const handleToggleAvailability = async (
                             <th className="p-4">Order ID</th>
                             <th className="p-4">Items</th>
                             <th className="p-4">Date & Time</th>
+                            <th className="p-4">Payment</th>
                             <th className="p-4">Amount</th>
                             <th className="p-4">Status</th>
                           </tr>
@@ -765,7 +794,7 @@ const handleToggleAvailability = async (
                         <tbody className="divide-y divide-gray-100 text-sm">
                           {analyticsData.recentOrders.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="p-8 text-center text-gray-500">
+                              <td colSpan={6} className="p-8 text-center text-gray-500">
                                 No recent orders found.
                               </td>
                             </tr>
@@ -785,6 +814,9 @@ const handleToggleAvailability = async (
                                 </td>
                                 <td className="p-4 text-gray-800">
                                   {new Date(order.createdAt).toLocaleString()}
+                                </td>
+                                <td className="p-4">
+                                  {renderPaymentBadge(order.paymentMethod)}
                                 </td>
                                 <td className="p-4 font-bold text-gray-900">
                                   ₦ {Number(order.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -824,7 +856,6 @@ const handleToggleAvailability = async (
                 <div className="space-y-8">
                   {Object.entries(
                     analyticsData.history.reduce((acc: any, order: any) => {
-                      // Format date to "Month Year" (e.g. "November 2026")
                       const date = new Date(order.createdAt);
                       const monthYear = date.toLocaleString("default", { month: "long", year: "numeric" });
                       
@@ -850,6 +881,7 @@ const handleToggleAvailability = async (
                               <th className="p-4">Order ID</th>
                               <th className="p-4">Date & Time</th>
                               <th className="p-4">Items</th>
+                              <th className="p-4">Payment</th>
                               <th className="p-4">Amount</th>
                               <th className="p-4">Status</th>
                             </tr>
@@ -870,6 +902,9 @@ const handleToggleAvailability = async (
                                   {order.items?.length > 0
                                     ? order.items.map((i: any) => `${i.quantity}x ${i.menuItem?.name}`).join(", ")
                                     : "No items"}
+                                </td>
+                                <td className="p-4">
+                                  {renderPaymentBadge(order.paymentMethod)}
                                 </td>
                                 <td className="p-4 font-bold text-gray-900">
                                   ₦ {Number(order.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}

@@ -1,3 +1,38 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+  }
+
+  /* Hide everything on the screen by default when printing */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Only show the thermal receipt container and its children */
+  #thermal-receipt,
+  #thermal-receipt * {
+    visibility: visible;
+  }
+
+  #thermal-receipt {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    padding: 4mm;
+    font-family: 'Courier New', Courier, monospace;
+    color: #000 !important;
+    background: #fff !important;
+  }
+}

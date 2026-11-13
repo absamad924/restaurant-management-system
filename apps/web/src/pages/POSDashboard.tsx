@@ -20,6 +20,19 @@ export default function POSDashboard() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [flow, setFlow] = useState<'KITCHEN_ORDER' | 'DIRECT_SALE'>('KITCHEN_ORDER');
 
+  const [searchQuery, setSearchQuery] = useState("");
+
+// Thermal Receipt State
+  const [receiptData, setReceiptData] = useState<{
+    orderNumber: string;
+    date: string;
+    items: CartItem[];
+    totalAmount: number;
+    paymentMethod: 'CASH' | 'CARD' | 'TRANSFER';
+    amountTendered: number;
+    changeDue: number;
+  } | null>(null);
+
   // Payment Settlement Modal State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>('CASH');
@@ -112,7 +125,7 @@ const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>
   };
 
   const submitOrderToBackend = async (settlementDetails?: {
-    paymentMethod: 'CASH' | 'POS_CARD' | 'TRANSFER';
+    paymentMethod: 'CASH' | 'CARD' | 'TRANSFER';
     paymentStatus: 'PAID';
   }) => {
     setIsSubmitting(true);
@@ -138,16 +151,39 @@ const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>
         })
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to submit order');
+        throw new Error(data.message || 'Failed to submit order');
+      }
+
+      // If this was a settled Direct Sale, populate the thermal receipt and print
+      if (settlementDetails) {
+        const tendered =
+          settlementDetails.paymentMethod === 'CASH'
+            ? Number(amountTendered || cartTotal)
+            : cartTotal;
+
+        setReceiptData({
+          orderNumber: data.order?.orderNumber || `ORD-${Date.now().toString().slice(-6)}`,
+          date: new Date().toLocaleString(),
+          items: [...cart],
+          totalAmount: cartTotal,
+          paymentMethod: settlementDetails.paymentMethod,
+          amountTendered: tendered,
+          changeDue: Math.max(0, tendered - cartTotal),
+        });
+
+        setTimeout(() => {
+          window.print();
+        }, 150);
       }
 
       setCart([]);
       setIsPaymentModalOpen(false);
       toast.success(
         flow === 'DIRECT_SALE'
-          ? 'Payment settled & order completed!'
+          ? 'Payment settled & printing receipt...'
           : 'Order sent to Kitchen Display!'
       );
     } catch (error: any) {
@@ -157,16 +193,47 @@ const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>
       setIsSubmitting(false);
     }
   };
+  // Filter and sort items based on search
+  const filteredMenuItems = menuItems
+    .filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
       {/* Main Catalog Area */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="bg-white shadow-sm px-6 py-4 flex justify-between items-center">
+       <header className="bg-white shadow-sm px-6 py-4 flex justify-between items-center z-20">
           <h1 className="text-2xl font-bold text-gray-800">Cashier POS</h1>
+          
+          {/* Search Bar */}
+          <div className="flex-1 max-w-md mx-8 relative">
+            <input
+              type="text"
+              placeholder="Search dishes or drinks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 bg-gray-100 border-transparent rounded-lg outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm font-medium text-gray-800"
+            />
+            <div className="absolute left-3 top-3 text-gray-400">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-3 text-gray-400 hover:text-gray-700 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+
           <button 
             onClick={handleLogout} 
-            className="px-4 py-2 bg-red-50 text-red-600 rounded-md hover:bg-red-100 font-medium transition-colors"
+            className="px-4 py-2 bg-red-50 text-red-600 rounded-md hover:bg-red-100 font-medium transition-colors whitespace-nowrap"
           >
             Log Out
           </button>
@@ -174,10 +241,14 @@ const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>
         
         {/* Scrollable Catalog Grid Container */}
         <div className="flex-1 overflow-auto p-6">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {[...menuItems]
-              .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-              .map(item => (
+          {filteredMenuItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+              <p className="text-lg font-semibold mb-1">No items found</p>
+              <p className="text-sm">Try searching for something else, like "Coke" or "Burger".</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {filteredMenuItems.map(item => (
                 <div 
                   key={item.id}
                   onClick={() => addToCart(item)}
@@ -192,7 +263,8 @@ const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>
                   {!item.isAvailable && <span className="text-xs text-red-500 font-medium mt-2 block">Out of Stock</span>}
                 </div>
               ))}
-          </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -455,6 +527,70 @@ const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'TRANSFER'>
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Hidden 80mm Thermal Receipt Layout (Visible only during print) */}
+      {receiptData && (
+        <div id="thermal-receipt" className="hidden print:block text-black text-xs leading-snug">
+          {/* Restaurant Header */}
+          <div className="text-center border-b border-dashed border-black pb-3 mb-3">
+            <h2 className="text-base font-bold uppercase tracking-wider">RMS</h2>
+            <p className="text-[11px]">Official Sales Receipt</p>
+            <p className="text-[11px] mt-1">{receiptData.date}</p>
+            <p className="font-bold text-xs mt-1">Order: {receiptData.orderNumber}</p>
+          </div>
+
+          {/* Itemized List */}
+          <div className="border-b border-dashed border-black pb-3 mb-3 space-y-1.5">
+            <div className="flex justify-between font-bold border-b border-black pb-1 text-[11px]">
+              <span>ITEM</span>
+              <span>TOTAL</span>
+            </div>
+            {receiptData.items.map((item) => (
+              <div key={item.id} className="flex justify-between items-start gap-2">
+                <div className="flex-1">
+                  <span className="font-semibold">{item.quantity}x </span>
+                  <span>{item.name}</span>
+                  <div className="text-[10px] text-gray-700">
+                    @ ₦{item.price.toLocaleString()}
+                  </div>
+                </div>
+                <span className="font-semibold whitespace-nowrap">
+                  ₦{(item.price * item.quantity).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Totals & Payment Breakdown */}
+          <div className="space-y-1 border-b border-dashed border-black pb-3 mb-3">
+            <div className="flex justify-between text-sm font-bold">
+              <span>TOTAL DUE:</span>
+              <span>₦{receiptData.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span>Payment Method:</span>
+              <span className="font-bold">{receiptData.paymentMethod}</span>
+            </div>
+            {receiptData.paymentMethod === 'CASH' && (
+              <>
+                <div className="flex justify-between text-[11px]">
+                  <span>Cash Tendered:</span>
+                  <span>₦{receiptData.amountTendered.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between text-[11px] font-bold">
+                  <span>Change Due:</span>
+                  <span>₦{receiptData.changeDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="text-center text-[11px] space-y-1 pt-1">
+            <p className="font-bold">Thank you for your patronage!</p>
+            <p>Please keep receipt for your records.</p>
           </div>
         </div>
       )}
