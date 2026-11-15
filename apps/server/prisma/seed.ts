@@ -4,11 +4,12 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding database...');
+  console.log('Seeding database...');
 
-  // 1. Hash separate passwords for manager and cashier
+  // 1. Hash separate passwords for manager, cashier, and kitchen
   const managerPassword = await bcrypt.hash('managerSecure123', 10);
   const cashierPassword = await bcrypt.hash('cashierSecure123', 10);
+  const kitchenPassword = await bcrypt.hash('kitchenSecure123', 10);
 
   // 2. Seed Manager Account
   const manager = await prisma.user.upsert({
@@ -20,7 +21,7 @@ async function main() {
       role: Role.MANAGER,
     },
   });
-  console.log(`✅ Created manager (${manager.username})`);
+  console.log(`Created manager (${manager.username})`);
 
   // 3. Seed Cashier Account
   const cashier = await prisma.user.upsert({
@@ -32,9 +33,21 @@ async function main() {
       role: Role.CASHIER,
     },
   });
-  console.log(`✅ Created cashier (${cashier.username})`);
+  console.log(`Created cashier (${cashier.username})`);
 
-  // 4. Seed Categories safely using findFirst/create
+  // 4. Seed Kitchen Account
+  const kitchen = await prisma.user.upsert({
+    where: { username: 'kitchen' },
+    update: {},
+    create: {
+      username: 'kitchen',
+      password: kitchenPassword,
+      role: Role.KITCHEN,
+    },
+  });
+  console.log(`Created kitchen (${kitchen.username})`);
+
+  // 5. Seed Categories safely using findFirst/create
   let drinksCat = await prisma.category.findFirst({ where: { name: 'Drinks' } });
   if (!drinksCat) {
     drinksCat = await prisma.category.create({ data: { name: 'Drinks' } });
@@ -45,9 +58,9 @@ async function main() {
     mealsCat = await prisma.category.create({ data: { name: 'Meals' } });
   }
 
-  console.log('✅ Categories ready');
+  console.log('Categories ready');
 
-  // 5. Seed Menu Items
+  // 6. Seed Menu Items
   const itemsToSeed = [
     { name: 'Bottled Water 75cl', price: 300, isAvailable: true, categoryId: drinksCat.id },
     { name: 'Cold Soft Drink 50cl', price: 500, isAvailable: true, categoryId: drinksCat.id },
@@ -63,13 +76,13 @@ async function main() {
     }
   }
 
-  console.log('✅ Created default menu catalog items');
-  console.log('🌱 Seeding complete!');
+  console.log('Created default menu catalog items');
+  console.log(' Seeding complete!');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seeding failed:', e);
+    console.error(' Seeding failed:', e);
     process.exit(1);
   })
   .finally(async () => {

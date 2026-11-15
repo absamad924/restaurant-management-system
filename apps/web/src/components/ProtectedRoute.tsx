@@ -2,7 +2,7 @@ import { Navigate } from 'react-router-dom';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  allowedRoles?: ('MANAGER' | 'CASHIER')[];
+  allowedRoles?: ('MANAGER' | 'CASHIER' | 'KITCHEN')[];
 }
 
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
@@ -24,7 +24,13 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
 
     // Check if user's role is allowed on this route
     if (allowedRoles && !allowedRoles.includes(payload.role)) {
-      return <Navigate to={payload.role === 'MANAGER' ? '/admin' : '/pos'} replace />;
+      const fallbackRoute =
+        payload.role === 'MANAGER'
+          ? '/admin'
+          : payload.role === 'KITCHEN'
+          ? '/kds'
+          : '/pos';
+      return <Navigate to={fallbackRoute} replace />;
     }
 
     return <>{children}</>;
