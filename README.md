@@ -1,8 +1,124 @@
-# Restaurant Management System 
- 
-A multi-tenant enterprise solution featuring a Cashier POS with direct and kitchen order flows, Manager Analytics Dashboard and Customer Mobile App. 
- 
-## Core Modules 
-- **apps/web**: React + Vite + Tailwind CSS Cashier POS & Manager Dashboard 
-- **apps/mobile**: React Native (Expo) Customer App 
-- **apps/server**: Node.js + Express API, WebSockets & Prisma ORM 
+# Restaurant Management System (RMS)
+
+A full-stack, real-time Restaurant Management System built with **Express**, **Prisma ORM**, **PostgreSQL**, **React (Vite + Tailwind CSS)**, **Socket.io**, and **Expo (React Native)**. Designed for fast local-network operation with real-time synchronization between the **Admin Control Panel**, **Cashier POS**, **Kitchen Display System (KDS)**, and **Customer Mobile App**.
+
+---
+
+## Key Features
+
+- **Role-Based Access Control (RBAC):** Dedicated authentication and route guards for `MANAGER`, `CASHIER`, and `KITCHEN` accounts.
+- **Cashier POS (`/pos`):**
+  - Live menu catalog search and instant out-of-stock status updates.
+  - **Dual-Order Flow:**
+    - **Direct Sale:** Instant payment settlement (`CASH`, `CARD`, `TRANSFER`) with automatic change calculation and **80mm thermal receipt printing**.
+    - **Kitchen Order:** Dispatches orders straight to the KDS queue and tracks unpaid bills in a real-time **Open Kitchen Tabs** slide-over drawer.
+- **Kitchen Display System (`/kds`):**
+  - Live WebSocket ticket queue (`new_order`) with audio alerts.
+  - One-tap **Bump (Complete)** action (`READY`) that notifies the Cashier POS in real time.
+- **Admin Control Panel (`/admin`):**
+  - Live sales analytics (Total Revenue, Total Orders, Average Order Value).
+  - Monthly-grouped **Transaction Ledger** and **Recent Transactions** (`DD/MM/YYYY` formatting) with color-coded payment badges.
+  - Menu catalog & stock availability management (`menu_updated` live broadcast).
+  - Staff password reset settings for `manager`, `cashier`, and `kitchen` accounts.
+- **Customer Mobile App (`apps/mobile`):**
+  - Account-free price checking and self-ordering UI for Dine-In / Takeaway *(in progress on `phase-5`)*.
+
+---
+
+## Project Structure
+
+```text
+restaurant-management-system/
+├── apps/
+│   ├── server/          # Express API, Socket.io server & Prisma PostgreSQL schema
+│   │   ├── prisma/      # schema.prisma & seed.ts
+│   │   └── src/         # Routes (auth, orders, menu, analytics, users) & middleware
+│   ├── web/             # React + Vite + Tailwind CSS frontend (Admin, POS, KDS)
+│   └── mobile/          # Expo (React Native + TypeScript) Customer App
+└── package.json
+```
+
+---
+
+## Prerequisites
+
+Make sure the following are installed on your machine before cloning:
+
+- **Node.js** (v18 or higher)
+- **PostgreSQL** (running locally on port `5432`)
+- **Git**
+
+---
+
+## Getting Started (Installation & Setup)
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/absamad924/restaurant-management-system.git
+cd restaurant-management-system
+```
+
+### 2. Configure the Backend (`apps/server`)
+Navigate to the server folder and install dependencies:
+```bash
+cd apps/server
+npm install
+```
+
+Create a `.env` file inside `apps/server/` with your PostgreSQL connection string and JWT secret:
+```env
+DATABASE_URL="postgresql://postgres:YOUR_POSTGRES_PASSWORD@localhost:5432/rms_db?schema=public"
+JWT_SECRET="your_super_secret_jwt_key"
+PORT=5000
+```
+
+Push the Prisma schema to PostgreSQL, generate the Prisma client, and seed the default staff accounts and menu items:
+```bash
+npx prisma db push
+npx prisma generate
+npx prisma db seed
+```
+
+Start the Express + Socket.io backend server:
+```bash
+npx tsx src/server.ts
+```
+*(The API and WebSocket server will run on `http://localhost:5000`.)*
+
+### 3. Configure the Web Frontend (`apps/web`)
+Open a second terminal, navigate to `apps/web`, install dependencies, and start Vite:
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+*(The web app will be available at `http://localhost:5173`.)*
+
+---
+
+## Default Staff Credentials
+
+After running `npx prisma db seed`, you can log in at `http://localhost:5173/login` with these seeded accounts:
+
+| Role | Username | Default Password | Redirect Route |
+| :--- | :--- | :--- | :--- |
+| **Manager (Admin)** | `manager` | `managerSecure123` | `/admin` |
+| **Cashier (POS)** | `cashier` | `cashierSecure123` | `/pos` |
+| **Kitchen (KDS)** | `kitchen` | `kitchenSecure123` | `/kds` |
+
+*(Passwords can be changed anytime by a Manager under **Admin Control Panel → System Settings**.)*
+
+---
+
+## Useful Database Commands
+
+Run these inside `apps/server`:
+
+- **Open Prisma Studio (Visual Database Browser):**
+  ```bash
+  npx prisma studio
+  ```
+- **Re-seed Default Users & Menu:**
+  ```bash
+  npx prisma db seed
+  ```
