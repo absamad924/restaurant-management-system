@@ -1,6 +1,6 @@
 # Restaurant Management System (RMS)
 
-A full-stack, real-time Restaurant Management System built with **Express**, **Prisma ORM**, **PostgreSQL**, **React (Vite + Tailwind CSS)**, **Socket.io**, and **Expo (React Native)**. Designed for fast local-network operation with real-time synchronization between the **Admin Control Panel**, **Cashier POS**, **Kitchen Display System (KDS)**, and **Customer Mobile App**.
+A full-stack, real-time Restaurant Management System built with **Express**, **Prisma 8 ORM (`@prisma/orm-postgres`)**, **PostgreSQL**, **React (Vite + Tailwind CSS)**, **Socket.io**, and **Expo (React Native)**. Designed for fast local-network operation with real-time synchronization between the **Admin Control Panel**, **Cashier POS**, **Kitchen Display System (KDS)**, and **Customer Mobile App**.
 
 ---
 
@@ -30,11 +30,12 @@ A full-stack, real-time Restaurant Management System built with **Express**, **P
 ```text
 restaurant-management-system/
 ├── apps/
-│   ├── server/          # Express API, Socket.io server & Prisma PostgreSQL schema
-│   │   ├── prisma/      # schema.prisma & seed.ts
-│   │   └── src/         # Routes (auth, orders, menu, analytics, users) & middleware
-│   ├── web/             # React + Vite + Tailwind CSS frontend (Admin, POS, KDS)
-│   └── mobile/          # Expo (React Native + TypeScript) Customer App
+│   ├── server/              # Express API, Socket.io server & Prisma 8 PostgreSQL runtime
+│   │   ├── prisma/          # schema.prisma & seed.ts
+│   │   ├── prisma.config.ts # Prisma 8 ORM & contract configuration
+│   │   └── src/             # Routes, middleware & emitted Prisma contract (src/prisma/)
+│   ├── web/                 # React + Vite + Tailwind CSS frontend (Admin, POS, KDS)
+│   └── mobile/              # Expo (React Native + TypeScript) Customer App
 └── package.json
 ```
 
@@ -44,7 +45,7 @@ restaurant-management-system/
 
 Make sure the following are installed on your machine before cloning:
 
-- **Node.js** (v18 or higher)
+- **Node.js** (v20 or higher)
 - **PostgreSQL** (running locally on port `5432`)
 - **Git**
 
@@ -67,21 +68,22 @@ npm install
 
 Create a `.env` file inside `apps/server/` with your PostgreSQL connection string and JWT secret:
 ```env
-DATABASE_URL="postgresql://postgres:YOUR_POSTGRES_PASSWORD@localhost:5432/rms_db?schema=public"
+DATABASE_URL="postgresql://postgres:YOUR_POSTGRES_PASSWORD@localhost:5432/rms_db"
 JWT_SECRET="your_super_secret_jwt_key"
 PORT=5000
 ```
 
-Push the Prisma schema to PostgreSQL, generate the Prisma client, and seed the default staff accounts and menu items:
+Emit the Prisma 8 schema contract, sign & verify the PostgreSQL database, and seed the default staff accounts and menu items:
 ```bash
-npx prisma db push
-npx prisma generate
-npx prisma db seed
+npx prisma contract emit
+npx prisma db sign
+npx prisma db verify
+npx tsx prisma/seed.ts
 ```
 
-Start the Express + Socket.io backend server:
+Start the Express + Socket.io backend server (use `watch` during development for auto-reload):
 ```bash
-npx tsx src/server.ts
+npx tsx watch src/server.ts
 ```
 *(The API and WebSocket server will run on `http://localhost:5000`.)*
 
@@ -98,7 +100,7 @@ npm run dev
 
 ## Default Staff Credentials
 
-After running `npx prisma db seed`, you can log in at `http://localhost:5173/login` with these seeded accounts:
+After running `npx tsx prisma/seed.ts`, you can log in at `http://localhost:5173/login` with these seeded accounts:
 
 | Role | Username | Default Password | Redirect Route |
 | :--- | :--- | :--- | :--- |
@@ -110,15 +112,20 @@ After running `npx prisma db seed`, you can log in at `http://localhost:5173/log
 
 ---
 
-## Useful Database Commands
+## Useful Database & Contract Commands
 
 Run these inside `apps/server`:
 
-- **Open Prisma Studio (Visual Database Browser):**
+- **Re-emit Contract After Editing `schema.prisma`:**
   ```bash
-  npx prisma studio
+  npx prisma contract emit
+  ```
+- **Sign & Verify Database Schema State:**
+  ```bash
+  npx prisma db sign
+  npx prisma db verify
   ```
 - **Re-seed Default Users & Menu:**
   ```bash
-  npx prisma db seed
+  npx tsx prisma/seed.ts
   ```
