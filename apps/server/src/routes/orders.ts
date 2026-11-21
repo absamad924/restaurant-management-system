@@ -1,9 +1,32 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { OrderStatus, OrderFlow, OrderType } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
+
+const VALID_ORDER_STATUSES = ['PENDING_KITCHEN', 'READY', 'COMPLETED', 'CANCELLED'] as const;
+type OrderStatus = (typeof VALID_ORDER_STATUSES)[number];
+
+// Helper to attach items + menuItem details in the exact shape the frontend expects
+async function hydrateOrder(orderId: string) {
+  const order = await prisma.orm.public.Order
+    .where((o) => o.id.eq(orderId))
+    .include('items')
+    .first();
+
+  if (!order) return null;
+
+  const menuItems = await prisma.orm.public.MenuItem.all();
+  const menuItemMap = new Map(menuItems.map((m) => [m.id, m]));
+
+  return {
+    ...order,
+    items: order.items.map((item) => ({
+      ...item,
+      menuItem: menuItemMap.get(item.menuItemId) || null,
+    })),
+  };
+}
 
 // Create a new order (Cashier / POS or Customer App)
 router.post('/', authenticateToken, async (req: AuthRequest, res) => {
@@ -15,10 +38,18 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
 
   try {
     let totalAmount = 0;
-    const orderItemsData = [];
+    const orderItemsData: Array<{
+      menuItemId: string;
+      quantity: number;
+      unitPrice: number;
+      notes: string | null;
+    }> = [];
 
     for (const item of items) {
-      const dbItem = await prisma.menuItem.findUnique({ where: { id: item.menuItemId } });
+      const dbItem = await prisma.orm.public.MenuItem
+        .where((m) => m.id.eq(item.menuItemId))
+        .first();
+
       if (!dbItem || !dbItem.isAvailable) {
         return res.status(400).json({
           status: 'error',
@@ -40,33 +71,30 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
     const orderNumber = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
 
     // Direct Sales are instantly fulfilled; Kitchen Orders go to the KDS queue
-    const initialStatus =
-      orderType === 'DIRECT_SALE'
-        ? OrderStatus.COMPLETED
-        : OrderStatus.PENDING_KITCHEN;
+    const initialStatus: OrderStatus =
+      orderType === 'DIRECT_SALE' ? 'COMPLETED' : 'PENDING_KITCHEN';
 
-    const newOrder = await prisma.order.create({
-      data: {
-        orderNumber,
-        flow: orderType || OrderFlow.KITCHEN_ORDER,
-        type: type || OrderType.DINE_IN,
-        totalAmount,
-        status: initialStatus,
-        paymentMethod: paymentMethod || null,
-        paymentStatus: paymentStatus || 'UNPAID',
-        items: {
-          create: orderItemsData,
-        },
-      },
-      include: {
-        items: {
-          include: { menuItem: true },
-        },
-      },
+    const createdOrder = await prisma.orm.public.Order.create({
+      orderNumber,
+      flow: orderType || 'KITCHEN_ORDER',
+      type: type || 'DINE_IN',
+      totalAmount,
+      status: initialStatus,
+      paymentMethod: paymentMethod || null,
+      paymentStatus: paymentStatus || 'UNPAID',
     });
 
+    for (const itemData of orderItemsData) {
+      await prisma.orm.public.OrderItem.create({
+        orderId: createdOrder.id,
+        ...itemData,
+      });
+    }
+
+    const newOrder = await hydrateOrder(createdOrder.id);
+
     const io = (req as any).io;
-    if (io) {
+    if (io && newOrder) {
       io.emit('new_order', newOrder);
     }
 
@@ -79,17 +107,22 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
 // Get all active kitchen orders (for Kitchen Display monitor)
 router.get('/active', authenticateToken, async (req, res) => {
   try {
-    const activeOrders = await prisma.order.findMany({
-      where: {
-        status: OrderStatus.PENDING_KITCHEN,
-      },
-      include: {
-        items: {
-          include: { menuItem: true },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    const rawOrders = await prisma.orm.public.Order
+      .where((o) => o.status.eq('PENDING_KITCHEN'))
+      .orderBy((o) => o.createdAt.asc())
+      .include('items')
+      .all();
+
+    const menuItems = await prisma.orm.public.MenuItem.all();
+    const menuItemMap = new Map(menuItems.map((m) => [m.id, m]));
+
+    const activeOrders = rawOrders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => ({
+        ...item,
+        menuItem: menuItemMap.get(item.menuItemId) || null,
+      })),
+    }));
 
     res.status(200).json({ status: 'success', orders: activeOrders });
   } catch (error) {
@@ -100,18 +133,24 @@ router.get('/active', authenticateToken, async (req, res) => {
 // Get all unpaid orders (for Cashier POS Open Tabs drawer)
 router.get('/unpaid', authenticateToken, async (req, res) => {
   try {
-    const unpaidOrders = await prisma.order.findMany({
-      where: {
-        paymentStatus: 'UNPAID',
-        status: { not: OrderStatus.CANCELLED },
-      },
-      include: {
-        items: {
-          include: { menuItem: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const rawOrders = await prisma.orm.public.Order
+      .where((o) => o.paymentStatus.eq('UNPAID'))
+      .orderBy((o) => o.createdAt.desc())
+      .include('items')
+      .all();
+
+    const menuItems = await prisma.orm.public.MenuItem.all();
+    const menuItemMap = new Map(menuItems.map((m) => [m.id, m]));
+
+    const unpaidOrders = rawOrders
+      .filter((order) => order.status !== 'CANCELLED')
+      .map((order) => ({
+        ...order,
+        items: order.items.map((item) => ({
+          ...item,
+          menuItem: menuItemMap.get(item.menuItemId) || null,
+        })),
+      }));
 
     res.status(200).json({ status: 'success', orders: unpaidOrders });
   } catch (error) {
@@ -124,21 +163,19 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
   const id = req.params.id as string;
   const { status } = req.body;
 
-  if (!status || !Object.values(OrderStatus).includes(status)) {
+  if (!status || !VALID_ORDER_STATUSES.includes(status)) {
     return res.status(400).json({ status: 'error', message: 'Invalid order status' });
   }
 
   try {
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: { status },
-      include: {
-        items: { include: { menuItem: true } },
-      },
-    });
+    await prisma.orm.public.Order
+      .where((o) => o.id.eq(id))
+      .update({ status });
+
+    const updatedOrder = await hydrateOrder(id);
 
     const io = (req as any).io;
-    if (io) {
+    if (io && updatedOrder) {
       io.emit('order_status_updated', updatedOrder);
     }
 
@@ -158,20 +195,18 @@ router.patch('/:id/settle', authenticateToken, async (req, res) => {
   }
 
   try {
-    const settledOrder = await prisma.order.update({
-      where: { id },
-      data: {
-        status: OrderStatus.COMPLETED,
+    await prisma.orm.public.Order
+      .where((o) => o.id.eq(id))
+      .update({
+        status: 'COMPLETED',
         paymentStatus: 'PAID',
         paymentMethod,
-      },
-      include: {
-        items: { include: { menuItem: true } },
-      },
-    });
+      });
+
+    const settledOrder = await hydrateOrder(id);
 
     const io = (req as any).io;
-    if (io) {
+    if (io && settledOrder) {
       io.emit('order_status_updated', settledOrder);
     }
 

@@ -1,19 +1,16 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma';
-import { authenticateToken, requireRole } from '../middleware/auth';
-import { Role } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+import { authenticateToken, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
 // Delete a menu item (MANAGER only)
-router.delete('/items/:id', authenticateToken, requireRole([Role.MANAGER]), async (req, res) => {
+router.delete('/items/:id', authenticateToken, requireRole(['MANAGER']), async (req, res) => {
   const id = req.params.id as string;
 
   try {
-    await prisma.menuItem.delete({
-      where: { id },
-    });
+    await prisma.orm.public.MenuItem.where((m) => m.id.eq(id)).delete();
 
-    // Broadcast to all connected clients that the menu changed
     const io = (req as any).io;
     if (io) {
       io.emit('menu_updated');
@@ -28,14 +25,15 @@ router.delete('/items/:id', authenticateToken, requireRole([Role.MANAGER]), asyn
 // Get all categories with active menu items (Public / POS access)
 router.get('/categories', async (req, res) => {
   try {
-    const categories = await prisma.category.findMany({
-      include: {
-        menuItems: {
-          orderBy: { name: 'asc' },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
+    const rawCategories = await prisma.orm.public.Category
+      .orderBy((c) => c.name.asc())
+      .include('menuItems')
+      .all();
+
+    const categories = rawCategories.map((cat) => ({
+      ...cat,
+      menuItems: [...cat.menuItems].sort((a, b) => a.name.localeCompare(b.name)),
+    }));
 
     res.status(200).json({ status: 'success', categories });
   } catch (error) {
@@ -46,14 +44,15 @@ router.get('/categories', async (req, res) => {
 // Get all menu items (Price checker endpoint for customer mobile app)
 router.get('/items', async (req, res) => {
   try {
-    const items = await prisma.menuItem.findMany({
-         include: {
-        category: {
-          select: { name: true },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
+    const rawItems = await prisma.orm.public.MenuItem
+      .orderBy((m) => m.name.asc())
+      .include('category')
+      .all();
+
+    const items = rawItems.map((item) => ({
+      ...item,
+      category: item.category ? { name: item.category.name } : null,
+    }));
 
     res.status(200).json({ status: 'success', items });
   } catch (error) {
@@ -62,11 +61,7 @@ router.get('/items', async (req, res) => {
 });
 
 // Create a new menu item (MANAGER only)
-router.post('/items', authenticateToken, requireRole([Role.MANAGER]), async (req, res) => {
- const io = (req as any).io;
-if (io) {
-  io.emit('menu_updated');
-}
+router.post('/items', authenticateToken, requireRole(['MANAGER']), async (req, res) => {
   const { name, description, price, categoryId, stockCount } = req.body;
 
   if (!name || !price || !categoryId) {
@@ -74,15 +69,18 @@ if (io) {
   }
 
   try {
-    const newItem = await prisma.menuItem.create({
-      data: {
-        name,
-        description,
-        price: parseFloat(price),
-        categoryId,
-        stockCount: stockCount ? parseInt(stockCount) : 0,
-      },
+    const newItem = await prisma.orm.public.MenuItem.create({
+      name,
+      description,
+      price: parseFloat(price),
+      categoryId,
+      stockCount: stockCount ? parseInt(stockCount) : 0,
     });
+
+    const io = (req as any).io;
+    if (io) {
+      io.emit('menu_updated');
+    }
 
     res.status(201).json({ status: 'success', item: newItem });
   } catch (error) {
@@ -91,25 +89,23 @@ if (io) {
 });
 
 // Update menu item price/availability (MANAGER only)
-router.patch('/items/:id', authenticateToken, requireRole([Role.MANAGER]), async (req, res) => {
-
+router.patch('/items/:id', authenticateToken, requireRole(['MANAGER']), async (req, res) => {
   const id = req.params.id as string;
   const { price, stockCount, isAvailable } = req.body;
 
   try {
-    const updatedItem = await prisma.menuItem.update({
-      where: { id },
-      data: {
+    const updatedItem = await prisma.orm.public.MenuItem
+      .where((m) => m.id.eq(id))
+      .update({
         ...(price !== undefined && { price: parseFloat(price) }),
         ...(stockCount !== undefined && { stockCount: parseInt(stockCount) }),
         ...(isAvailable !== undefined && { isAvailable: Boolean(isAvailable) }),
-      },
-    });
+      });
 
-      const io = (req as any).io;
-if (io) {
-  io.emit('menu_updated');
-}
+    const io = (req as any).io;
+    if (io) {
+      io.emit('menu_updated');
+    }
 
     res.status(200).json({ status: 'success', item: updatedItem });
   } catch (error) {

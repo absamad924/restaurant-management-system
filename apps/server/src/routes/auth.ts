@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../lib/prisma';
+import { prisma } from '../lib/prisma.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_jwt_key';
@@ -14,7 +14,10 @@ router.post('/login', async (req, res) => {
   }
 
   try {
-    const user = await prisma.user.findUnique({ where: { username } });
+    const user = await prisma.orm.public.User
+      .where((u) => u.username.eq(username))
+      .first();
+
     if (!user) {
       return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
     }
@@ -25,7 +28,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
-    
+
     res.status(200).json({ status: 'success', token, role: user.role });
   } catch (error) {
     res.status(500).json({ status: 'error', message: (error as Error).message });

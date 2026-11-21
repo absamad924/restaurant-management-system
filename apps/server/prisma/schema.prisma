@@ -11,8 +11,8 @@ datasource db {
 enum Role {
   MANAGER
   CASHIER
-  KITCHEN
   CUSTOMER
+  KITCHEN
 }
 
 enum OrderFlow {

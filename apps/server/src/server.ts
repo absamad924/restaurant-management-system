@@ -40,7 +40,7 @@ app.use('/api/analytics', analyticsRoutes);
 // System Health Endpoint
 app.get('/api/health', async (req, res) => {
   try {
-    const userCount = await prisma.user.count();
+   const userCount = (await prisma.orm.public.User.all()).length;
     res.status(200).json({
       status: 'success',
       message: 'RMS Engine is fully operational',

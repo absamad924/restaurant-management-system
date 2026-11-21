@@ -1,11 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { Role } from '@prisma/client';
+
+export type Role = 'MANAGER' | 'CASHIER' | 'CUSTOMER' | 'KITCHEN';
 
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
+    email?: string;
     role: Role;
   };
 }
@@ -31,9 +32,9 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
 export const requireRole = (allowedRoles: Role[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user || !allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ 
-        status: 'error', 
-        message: 'Forbidden: Insufficient privileges for this action' 
+      return res.status(403).json({
+        status: 'error',
+        message: 'Forbidden: Insufficient privileges for this action',
       });
     }
     next();

@@ -1,30 +1,33 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma';
+import { prisma } from '../lib/prisma.js';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
   try {
-    // Note: Assuming your order model is named 'Order' and has a 'total' and 'createdAt' field.
-    const allOrders = await prisma.order.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        items: {
-          include: {
-            menuItem: true // Pulls in the actual name and details of the item
-          }
-        }
-      }
-    });
+    const rawOrders = await prisma.orm.public.Order
+      .orderBy((o) => o.createdAt.desc())
+      .include('items')
+      .all();
+
+    const menuItems = await prisma.orm.public.MenuItem.all();
+    const menuItemMap = new Map(menuItems.map((m) => [m.id, m]));
+
+    const allOrders = rawOrders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => ({
+        ...item,
+        menuItem: menuItemMap.get(item.menuItemId) || null,
+      })),
+    }));
 
     const totalOrders = allOrders.length;
-    
+
     // Calculate total revenue
     const totalRevenue = allOrders.reduce((sum, order) => {
-      // Ensure we are working with numbers (in case Prisma returns Decimals)
-      return sum + Number(order.totalAmount || 0); 
+      return sum + Number(order.totalAmount || 0);
     }, 0);
-    
+
     const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
     res.json({
@@ -32,10 +35,10 @@ router.get('/', async (req, res) => {
       metrics: {
         totalRevenue,
         totalOrders,
-        averageOrderValue
+        averageOrderValue,
       },
       recentOrders: allOrders.slice(0, 3), // Send only the 3 most recent for the table
-      history: allOrders
+      history: allOrders,
     });
   } catch (error) {
     console.error('Analytics Error:', error);
